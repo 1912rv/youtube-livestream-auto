@@ -1,4 +1,6 @@
-# Chesscast Live
+# youtube-livestream-auto
+
+## Chesscast Live
 
 Chesscast continuously streams archived chess games with a centered board, player portraits, and instrumental background music. Before each game finishes, it loads and analyzes the next PGN and looks for public-domain or CC0 player portraits on Wikimedia Commons. The encoder and music remain active during game changes. Stockfish supplies lightweight best/good/brilliant/inaccuracy/mistake/blunder heuristics; these are not Chess.com's proprietary move ratings.
 
