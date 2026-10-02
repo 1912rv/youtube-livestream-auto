@@ -6,6 +6,8 @@ import html
 import logging
 import os
 import re
+import signal
+import tempfile
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -234,11 +236,33 @@ def fetch_archive_game(seen: set[str]) -> Path | None:
                     continue
                 GAME_CACHE_DIR.mkdir(parents=True, exist_ok=True)
                 path = GAME_CACHE_DIR / f"{signature}.pgn"
+                if path.exists():
+                    try:
+                        cached_game = load_game(path)
+                        if (
+                            cached_game.errors
+                            or game_signature(cached_game) != signature
+                        ):
+                            raise ValueError("Cached PGN does not match its filename")
+                    except (OSError, ValueError):
+                        logger.warning("Replacing invalid cached PGN: %s", path.name)
+                        path.unlink(missing_ok=True)
                 if not path.exists():
                     exporter = chess.pgn.StringExporter(
                         headers=True, variations=False, comments=True
                     )
-                    path.write_text(game.accept(exporter) + "\n", encoding="utf-8")
+                    with tempfile.NamedTemporaryFile(
+                        mode="w", encoding="utf-8", dir=GAME_CACHE_DIR,
+                        prefix=f".{signature}.", suffix=".tmp", delete=False,
+                    ) as temporary:
+                        temporary_path = Path(temporary.name)
+                        try:
+                            temporary.write(game.accept(exporter) + "\n")
+                            temporary.flush()
+                            os.fsync(temporary.fileno())
+                            os.replace(temporary_path, path)
+                        finally:
+                            temporary_path.unlink(missing_ok=True)
                 path.touch()
                 remember_game_signature(signature)
                 prune_game_cache()
@@ -390,7 +414,12 @@ def run_playlist(settings: Settings, paths: list[Path], first: PreparedGame,
         executor.shutdown(wait=False, cancel_futures=True)
 
 
+def _handle_termination(signum: int, _frame: object) -> None:
+    raise KeyboardInterrupt(f"received termination signal {signum}")
+
+
 def main() -> None:
+    signal.signal(signal.SIGTERM, _handle_termination)
     parser = argparse.ArgumentParser(description="Historical chess livestream")
     parser.add_argument("--schedule-at",
                         help="Schedule in ISO-8601 with timezone, then stream at that time")
