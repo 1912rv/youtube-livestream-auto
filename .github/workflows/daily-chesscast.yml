@@ -36,10 +36,7 @@ jobs:
 
       - uses: actions/cache@v4
         with:
-          path: |
-            output/historical-games
-            output/historical-games.seen
-            output/player-image-credits.md
+          path: output/historical-games.seen
           key: chesscast-history-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: |
             chesscast-history-${{ github.ref_name }}-
