@@ -435,15 +435,24 @@ class LiveOutput:
 
     def stop(self) -> None:
         self.stop_event.set()
-        if self.process is not None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-        if self.writer is not None:
-            self.writer.join(timeout=2)
-        self.temp_dir.cleanup()
+        try:
+            if self.process is not None and self.process.poll() is None:
+                try:
+                    self.process.terminate()
+                except ProcessLookupError:
+                    pass
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        self.process.kill()
+                    except ProcessLookupError:
+                        pass
+                    self.process.wait()
+        finally:
+            if self.writer is not None:
+                self.writer.join(timeout=2)
+            self.temp_dir.cleanup()
 
     def _write_video(self) -> None:
         interval = 1 / FPS
