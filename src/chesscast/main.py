@@ -304,6 +304,19 @@ def prune_game_cache() -> None:
         old_path.unlink(missing_ok=True)
 
 
+def clear_downloaded_game_cache() -> None:
+    removed = 0
+    for pattern in ("*.pgn", ".*.tmp"):
+        for path in GAME_CACHE_DIR.glob(pattern):
+            path.unlink(missing_ok=True)
+            removed += 1
+    if removed:
+        logger.info(
+            "Removed %d downloaded game/cache files; retaining signature history",
+            removed,
+        )
+
+
 def prepare_next_game(paths: list[Path], index: int, seen: set[str]) -> PreparedGame:
     archive_path = fetch_archive_game(seen)
     if archive_path is not None:
@@ -411,7 +424,7 @@ def run_playlist(settings: Settings, paths: list[Path], first: PreparedGame,
     finally:
         for output in outputs:
             output.stop()
-        executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 def _handle_termination(signum: int, _frame: object) -> None:
@@ -437,48 +450,51 @@ def main() -> None:
     if args.max_games < 0 or args.max_runtime_seconds < 0:
         parser.error("game and runtime limits must be zero or greater")
 
-    settings = Settings.from_env()
-    paths = game_files()
-    if not paths:
-        raise ValueError(f"No historical PGN files found in {GAME_DIR}")
-    seen = cached_game_signatures()
-    first_path = fetch_archive_game(seen) or paths[0]
-    if first_path in paths:
-        remember_game_signature(game_signature(load_game(first_path)))
-    first = prepare_game(first_path, analyze=False)
-
-    if args.schedule_at:
-        scheduled_at = datetime.fromisoformat(args.schedule_at.replace("Z", "+00:00"))
-        if scheduled_at.tzinfo is None:
-            raise ValueError("--schedule-at must include a timezone")
-        title, description = make_metadata(
-            title=first.title,
-            white=first.white,
-            black=first.black,
-            event=first.game.headers.get("Event", first.title),
-            site=first.game.headers.get("Site", "Chess archive"),
-            year=first.game.headers.get("Date", "").split(".", 1)[0],
-            generate_with_ai=not args.no_ai_metadata,
-        )
-        first = replace(first, title=title, youtube_title=title, description=description)
-        thumbnail = Path(os.getenv("THUMBNAIL_OUTPUT", "/output/chesscast-thumbnail.png"))
-        create_thumbnail(thumbnail, first.title, first.white, first.black,
-                         first.game.board(), first.subtitle)
-        stream_key = settings.youtube_rtmp_url.rsplit("/", 1)[-1]
-        url = schedule_broadcast(
-            stream_key=stream_key,
-            title=title,
-            description=description,
-            scheduled_at=scheduled_at,
-            thumbnail=thumbnail,
-            privacy=args.privacy,
-        )
-        logger.info("Scheduled YouTube broadcast: %s", url)
-        while datetime.now(timezone.utc) < scheduled_at.astimezone(timezone.utc):
-            time.sleep(min(60, (scheduled_at - datetime.now(scheduled_at.tzinfo)).total_seconds()))
-
-    run_playlist(settings, paths, first, max_games=args.max_games,
-                 max_runtime_seconds=args.max_runtime_seconds)
+    try:
+        settings = Settings.from_env()
+        paths = game_files()
+        if not paths:
+            raise ValueError(f"No historical PGN files found in {GAME_DIR}")
+        seen = cached_game_signatures()
+        first_path = fetch_archive_game(seen) or paths[0]
+        if first_path in paths:
+            remember_game_signature(game_signature(load_game(first_path)))
+        first = prepare_game(first_path, analyze=False)
+    
+        if args.schedule_at:
+            scheduled_at = datetime.fromisoformat(args.schedule_at.replace("Z", "+00:00"))
+            if scheduled_at.tzinfo is None:
+                raise ValueError("--schedule-at must include a timezone")
+            title, description = make_metadata(
+                title=first.title,
+                white=first.white,
+                black=first.black,
+                event=first.game.headers.get("Event", first.title),
+                site=first.game.headers.get("Site", "Chess archive"),
+                year=first.game.headers.get("Date", "").split(".", 1)[0],
+                generate_with_ai=not args.no_ai_metadata,
+            )
+            first = replace(first, title=title, youtube_title=title, description=description)
+            thumbnail = Path(os.getenv("THUMBNAIL_OUTPUT", "/output/chesscast-thumbnail.png"))
+            create_thumbnail(thumbnail, first.title, first.white, first.black,
+                             first.game.board(), first.subtitle)
+            stream_key = settings.youtube_rtmp_url.rsplit("/", 1)[-1]
+            url = schedule_broadcast(
+                stream_key=stream_key,
+                title=title,
+                description=description,
+                scheduled_at=scheduled_at,
+                thumbnail=thumbnail,
+                privacy=args.privacy,
+            )
+            logger.info("Scheduled YouTube broadcast: %s", url)
+            while datetime.now(timezone.utc) < scheduled_at.astimezone(timezone.utc):
+                time.sleep(min(60, (scheduled_at - datetime.now(scheduled_at.tzinfo)).total_seconds()))
+    
+        run_playlist(settings, paths, first, max_games=args.max_games,
+                     max_runtime_seconds=args.max_runtime_seconds)
+    finally:
+        clear_downloaded_game_cache()
 
 
 if __name__ == "__main__":
