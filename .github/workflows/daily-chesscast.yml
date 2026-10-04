@@ -28,7 +28,7 @@ jobs:
       YOUTUBE_STREAM_URL: rtmp://a.rtmp.youtube.com/live2
       YOUTUBE_VERTICAL_STREAM_URL: rtmp://a.rtmp.youtube.com/live2
       HISTORICAL_MOVE_DELAY: "1.5"
-      STOCKFISH_DEPTH: "20"
+      STOCKFISH_DEPTH: "22"
       MAX_GAMES: ${{ github.event.inputs.max_games || '100' }}
       MAX_STREAM_SECONDS: "19800"
     steps:
