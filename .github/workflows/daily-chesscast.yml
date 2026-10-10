@@ -1,8 +1,6 @@
 name: Daily Chesscast
 
 on:
-  schedule:
-    - cron: "30 12 * * *"
   workflow_dispatch:
     inputs:
       max_games:
